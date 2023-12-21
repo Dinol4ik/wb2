@@ -51,33 +51,44 @@ func main() {
 
 Ответ:
 ```
+1
+2
+3
+4
+5
+6
+7
+8
+0
+0
 ...
-
 ```
-    func merge(a, b <-chan int) <-chan int {
-	c := make(chan int)
-	var counter int64
-	go func() {
-		for {
-			if counter == 8 {
-				close(c)
-				break
-			}
-			select {
-			case v, ok := <-a:
-				if ok {
-					c <- v
-					atomic.AddInt64(&counter, 1)
-				}
 
-			case v, ok := <-b:
+Так как в функции `merge` в `select` нет проверки на то, возвращается или нет стандартное значение из канала, после закрытия входного канала (`a` и `b`) в выходной канал будут отправляться нули (стандартное значение для `int`). 
 
-				if ok {
-					c <- v
-					atomic.AddInt64(&counter, 1)
-				}
-			}
+В go нет способа проверить закрыт ли канал не вычитывая из него значения, поэтому нужно применить другой подход для решения этой задачи:
+
+```go
+func merge(a, b <-chan int) <-chan int {
+	out := make(chan int)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func(c <-chan int) {
+		for v := range c {
+			out <- v
 		}
+		wg.Done()
+	}(a)
+	go func(c <-chan int) {
+		for v := range c {
+			out <- v
+		}
+		wg.Done()
+	}(b)
+	go func() {
+		wg.Wait()
+		close(out)
 	}()
-	return c
-    }
+	return out
+}
+```
